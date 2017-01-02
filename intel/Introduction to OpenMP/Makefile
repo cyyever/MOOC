@@ -1,6 +1,10 @@
 SRCS=$(wildcard *.c)
 BINS=$(patsubst %.c,%,$(SRCS))
-CFLAGS=-fopenmp
+#CC=gcc-7
+CC=/opt/intel/bin/icc
+CFLAGS=-fopenmp -O3
+#CC=clang-3.9
+#CFLAGS=-fopenmp=libomp
 
 .PHONY:all clean
 
