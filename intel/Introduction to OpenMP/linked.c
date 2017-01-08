@@ -67,10 +67,19 @@ int main(int argc, char *argv[]) {
   head = p;
 
   start = omp_get_wtime();
+  
+#pragma omp parallel default(none) firstprivate(p)
   {
+    int thread_num = omp_get_num_threads();
+    int ID = omp_get_thread_num();
+
+    int i=0;
     while (p != NULL) {
-      processwork(p);
+      if (i % thread_num == ID) {
+	processwork(p);
+      }
       p = p->next;
+      i++;
     }
   }
 
