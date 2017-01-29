@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
         temp = p->next;
         free (p);
         p = temp;
-     }  
+     }
 	 free (p);
 
      printf("Compute Time: %f seconds\n", end - start);

@@ -10,9 +10,7 @@ int main() {
   double  pi= 0.0;
   double  sum= 0.0;
 
-
-
-#pragma omp parallel for reduction (+: sum) 
+#pragma omp parallel for schedule(static) reduction (+: sum)
     for(int i = 0;i<num_steps;i++) {
       double x = (i +0.5 ) * step;
       sum += 4.0 / (1.0 + x * x);
