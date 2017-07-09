@@ -81,6 +81,124 @@
 
 #include "utils.h"
 
+__global__
+void find_max(const float* const d_logLuminance,
+		       const size_t numPixels,
+		       float *d_max_logLum
+		       )
+{
+  extern __shared__ float sdata[];
+
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int tid  = threadIdx.x;
+
+  // load shared mem from global mem
+  sdata[tid] = d_logLuminance[x];
+  __syncthreads();            // make sure entire block is loaded!
+
+  // do reduction in shared mem
+  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1)
+  {
+    if (tid < s)
+    {
+      if(sdata[tid]<sdata[tid+s]) {
+	sdata[tid] = sdata[tid + s];
+      }
+    }
+    __syncthreads();        // make sure all adds at one stage are done!
+  }
+
+  // only thread 0 writes result for this block back to global mem
+  if (tid == 0)
+  {
+    d_max_logLum[blockIdx.x] = sdata[0];
+  }
+}
+
+__global__
+void find_min(const float* const d_logLuminance,
+		       const size_t numPixels,
+		       float *d_min_logLum
+		       )
+{
+  extern __shared__ float sdata[];
+
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int tid  = threadIdx.x;
+
+  // load shared mem from global mem
+  sdata[tid] = d_logLuminance[x];
+  __syncthreads();            // make sure entire block is loaded!
+
+  // do reduction in shared mem
+  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1)
+  {
+    if (tid < s)
+    {
+      if(sdata[tid]>sdata[tid+s]) {
+	sdata[tid] = sdata[tid + s];
+      }
+    }
+    __syncthreads();        // make sure all adds at one stage are done!
+  }
+
+  // only thread 0 writes result for this block back to global mem
+  if (tid == 0)
+  {
+    d_min_logLum[blockIdx.x] = sdata[0];
+  }
+}
+
+__global__
+void gen_histo(const float* const d_logLuminance,
+		       const size_t numPixels,
+		       const size_t numBins,
+		       unsigned int *d_histo,
+		       const float logLumMin,
+		       const float logLumRange
+		       )
+{
+
+  extern __shared__  int s_histo[];
+
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+
+  for(int idx=threadIdx.x;idx<numBins;idx+=blockDim.x) {
+    s_histo[idx] = 0;
+  }
+  __syncthreads();            // make sure entire block is loaded!
+
+  if (x<numPixels) {
+    unsigned int bin = static_cast<unsigned int>((d_logLuminance[x] - logLumMin) / logLumRange * numBins);
+    if(bin>=numBins) {
+      bin=numBins-1;
+    }
+    atomicAdd(&(s_histo[bin]), 1);
+  }
+  __syncthreads();            // make sure entire block is loaded!
+
+  for(int idx=threadIdx.x;idx<numBins;idx+=blockDim.x) {
+      atomicAdd(&(d_histo[idx]), s_histo[idx]);
+  }
+}
+
+__global__
+void get_cdf(const unsigned int * const d_histo,
+		       const size_t numBins,
+		       unsigned int * d_cdf
+		       )
+{
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  if(x!=0) {
+    return;
+  }
+
+  d_cdf[0]=0;
+  for(int i=1;i<numBins;i++) {
+    d_cdf[i]=d_histo[i-1]+d_cdf[i-1];
+  }
+}
+
 void your_histogram_and_prefixsum(const float* const d_logLuminance,
                                   unsigned int* const d_cdf,
                                   float &min_logLum,
@@ -100,5 +218,61 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
        the cumulative distribution of luminance values (this should go in the
        incoming d_cdf pointer which already has been allocated for you)       */
 
+  //Step 1
+  //first we find the minimum and maximum across the entire image
 
+  float *d_min_logLum;
+  float *d_max_logLum;
+  size_t numPixels=numCols*numRows;
+  {
+    const dim3 blockSize(256, 1, 1);
+    dim3 gridSize((numPixels+blockSize.x-1)/blockSize.x , 1 , 1);
+
+    checkCudaErrors(cudaMalloc(&d_min_logLum,gridSize.x*sizeof(float)));
+
+    find_min<<<gridSize, blockSize, blockSize.x*sizeof(float)>>>(d_logLuminance, numPixels, d_min_logLum);
+
+    checkCudaErrors(cudaMalloc(&d_max_logLum,gridSize.x*sizeof(float)));
+    find_max<<<gridSize, blockSize, blockSize.x*sizeof(float)>>>(d_logLuminance, numPixels, d_max_logLum);
+
+    while(gridSize.x>1) {
+      int groupSize=gridSize.x;
+      gridSize.x=(groupSize+blockSize.x-1)/blockSize.x;
+      find_min<<<gridSize, blockSize, blockSize.x*sizeof(float)>>>(d_min_logLum, groupSize, d_min_logLum);
+      find_max<<<gridSize, blockSize, blockSize.x*sizeof(float)>>>(d_max_logLum, groupSize, d_max_logLum);
+    }
+  }
+
+  // Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
+  // launching your kernel to make sure that you didn't make any mistakes.
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+
+  checkCudaErrors(cudaMemcpy(&min_logLum, d_min_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+  checkCudaErrors(cudaMemcpy(&max_logLum, d_max_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+
+  //Step 2 && Step 3
+  unsigned int *d_histo;
+  {
+    const dim3 blockSize(256, 1, 1);
+    const dim3 gridSize((numPixels+blockSize.x-1)/blockSize.x , 1 , 1);
+
+    checkCudaErrors(cudaMalloc(&d_histo,numBins*sizeof(unsigned int)));
+    checkCudaErrors(cudaMemset(d_histo,0,numBins*sizeof(unsigned int)));
+
+    gen_histo<<<gridSize, blockSize,numBins*sizeof(unsigned int)>>>(d_logLuminance, numPixels, numBins,d_histo,min_logLum,max_logLum-min_logLum);
+
+    // Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
+    // launching your kernel to make sure that you didn't make any mistakes.
+    cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+  }
+
+  //Step 4
+  {
+    const dim3 blockSize(256, 1, 1);
+    get_cdf<<<1, blockSize>>>(d_histo, numBins,d_cdf);
+
+    // Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
+    // launching your kernel to make sure that you didn't make any mistakes.
+    cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+  }
 }
