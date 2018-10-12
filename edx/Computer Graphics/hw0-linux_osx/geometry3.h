@@ -106,7 +106,8 @@ void initobject(GLuint object, GLfloat * vert, GLint sizevert, GLfloat * col, GL
 void inittexture (const char * filename, GLuint program) {
 	int i,j,k ;
 	FILE * fp ; 
-	assert(fp = fopen(filename,"rb")) ;
+	fp = fopen(filename,"rb") ;
+	assert(fp);
 	fscanf(fp,"%*s %*d %*d %*d%*c") ;
 	for (i = 0 ; i < 256 ; i++)
 		for (j = 0 ; j < 256 ; j++)
