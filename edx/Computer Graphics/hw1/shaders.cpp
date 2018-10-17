@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <string>
 #ifdef __APPLE__
 #include <GLUT/glut.h>
 #include <OpenGL/glext.h>
