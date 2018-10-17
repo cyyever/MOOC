@@ -6,7 +6,8 @@
  */
 
 #include "grader.h"
-#include <unistd.h>
+#include <chrono>
+#include <thread>
 
 Grader::Grader() {
   testsRun = false;
@@ -110,7 +111,7 @@ void Grader::tests() {
         switch(it->input()) {
           case CMDINP_SAVE:
 	    displayFunc();
-	    usleep(250000);
+	    std::this_thread::sleep_for(std::chrono::microseconds(250000));
             //imgSaver->saveFrame();
             fname.str("");
             fname << prefix << ".";
@@ -118,7 +119,7 @@ void Grader::tests() {
             fname << ".png";
             imageNum++;
             screenshotFunc(fname.str());
-	    usleep(250000);
+	    std::this_thread::sleep_for(std::chrono::microseconds(250000));
 	    break;
           default:
             cerr << "Invalid special command input " << it->input() << endl;
@@ -128,11 +129,11 @@ void Grader::tests() {
       case CMDT_KEYBOARD:
         //Support mouse pos later
         keyboardFunc(it->input(),0,0);
-	usleep(100000);
+	std::this_thread::sleep_for(std::chrono::microseconds(100000));
         break;
       case CMDT_KEYBOARD_SPECIAL:
         specialFunc(it->input(),0,0);
-	usleep(100000);
+	std::this_thread::sleep_for(std::chrono::microseconds(100000));
         break;
       default:
         cerr << "Invalid command type: " << it->type() << endl;
