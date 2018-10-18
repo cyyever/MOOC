@@ -8,7 +8,7 @@
 // Helper rotation function.  
 mat3 Transform::rotate(const float degrees, const vec3& axis) {
   // YOUR CODE FOR HW1 HERE
-  float radian=degrees*pi/180;
+  float radian=glm::radians(degrees);
   vec3 normalized_axis=glm::normalize(axis);
 
   mat3 tmp;
@@ -27,23 +27,24 @@ mat3 Transform::rotate(const float degrees, const vec3& axis) {
 // Transforms the camera left around the "crystal ball" interface
 void Transform::left(float degrees, vec3& eye, vec3& up) {
   // YOUR CODE FOR HW1 HERE
-  mat3 model=rotate(degrees,vec3(0,1,0));
+  mat3 model=rotate(degrees,up);
   eye=model*eye;
-  up=model*up;
 }
 
 // Transforms the camera up around the "crystal ball" interface
 void Transform::up(float degrees, vec3& eye, vec3& up) {
   // YOUR CODE FOR HW1 HERE
-  mat3 model=rotate(degrees,vec3(1,0,0));
+  const vec3 &direction=eye;
+  vec3 axis=glm::cross(up,direction);
+  mat3 model=rotate(-degrees,axis);
   eye=model*eye;
-  up=model*up;
+  up=glm::transpose(glm::inverse(model))*up;
 }
 
 // Your implementation of the glm::lookAt matrix
 mat4 Transform::lookAt(vec3 eye, vec3 up) {
   // YOUR CODE FOR HW1 HERE
-  vec3 direction=eye;
+  const vec3 &direction=eye;
   vec3 w=glm::normalize(direction);
   vec3 u=glm::normalize(glm::cross(up,w));
   vec3 v=glm::cross(w,u);
